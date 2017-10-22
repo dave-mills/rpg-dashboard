@@ -107,7 +107,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 
             <!-- Add firebase document to include uploaded File url into the database -->
               <firebase-document
-                data="{{item.refDownloadUrl}}"
+                data="[[_makeItem(item.refMetadata,item.refDownloadUrl)}}"
                 id="doc-[[index]]"
                 app-name="firebaseApp"
                 ></firebase-document>
@@ -196,6 +196,15 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
             type: Array,
           }
       },
+      
+      _makeItem(metadata,url) {
+       var obj = {
+         metadata: metadata,
+         url: url
+        }
+        return obj;
+        }
+         
 
       catchError(e) {
           this.$$('#toaster').show({
