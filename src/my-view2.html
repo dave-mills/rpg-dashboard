@@ -12,9 +12,13 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 <link rel="import" href="shared-styles.html">
 
 <link rel="import" href="../bower_components/polymerfire/polymerfire.html">
-<link rel="import" href="../bower_components/vaadin-upload/vaadin-upload.html">
+<link rel="import" href="/bower_components/polymerfire/firebase-app.html">
+<link rel="import" href="/bower_components/polymerfire/firebase-storage-script.html">
+<link rel="import" href="/bower_components/polymerfire/firebase-document.html">
+
 <link rel="import" href="../bower_components/iron-list/iron-list.html">
 <link rel="import" href="../bower_components/iron-image/iron-image.html">
+<link rel="import" href="../bower_components/paper-toast/paper-toast.html">
 
 
 <dom-module id="my-view2">
@@ -42,7 +46,95 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     <div class="card">
       <h1>View Two</h1>
       <p>Upload images here. They'll appear below as thumbnails (I hope). You can then click/tap each one to change the image shown in the "show-players" view.</p>
-      <vaadin-upload id="uploader" on-upload-before="fileupload"></vaadin-upload>
+      <!-- <vaadin-upload id="uploader" on-upload-before="fileupload"></vaadin-upload> -->
+      <firebase-storage-multiupload
+        app-name="firebaseApp"
+        id="fs"
+        path="/images"
+        upload-tasks="{{uploadedFiles}}"
+        on-error="catchError"
+        force-unique>
+      </firebase-storage-multiupload>
+
+      <input id="file-uploader" type="file" multiple /> <br>
+
+      <button on-tap="upload">Upload</button> <br>
+
+      <template is="dom-repeat" items="[[uploadedFiles]]">
+        <div style="padding: 20px">
+          <firebase-storage-upload-task
+            app-name="firebaseApp"
+            task="[[item]]"
+            id="task-[[index]]"
+            bytes-transferred="{{item.bytesTransferred}}"
+            total-bytes="{{item.totalBytes}}"
+            state="{{item.state}}"
+            download-url="{{item.downloadUrl}}"
+            metadata="{{item.metadata}}"
+            path="{{item.path}}">
+          </firebase-storage-upload-task>
+
+          path from snapshot: [[item.snapshot.ref.fullPath]] <br>
+          path from upload-task: [[item.path]] <br>
+          storage uri: [[gsUri]] <br>
+          state: [[item.state]] <br>
+          metadata-contentType: [[item.metadata.contentType]] <br>
+
+          <br>
+
+
+
+
+          <template is="dom-if" if="[[!isEqual(item.state, 'success')]]">
+            <paper-progress
+              value="{{item.bytesTransferred}}"
+              min="0"
+              max="{{item.totalBytes}}">
+            </paper-progress>
+          </template>
+
+          <br>
+
+          <template is="dom-if" if="{{isEqual(item.state, 'success')}}">
+            <firebase-storage-ref
+              app-name="firebaseApp"
+              path="{{item.path}}"
+              storage-uri="{{gsUri}}"
+              id="ref-[[index]]"
+              metadata="{{item.refMetadata}}"
+              download-url="{{item.refDownloadUrl}}">
+            </firebase-storage-ref>
+
+            <!-- Add firebase document to include uploaded File url into the database -->
+              <firebase-document
+                data="{{item.refDownloadUrl}}"
+                id="doc-[[index]]"
+                app-name="firebaseApp"
+                ></firebase-document>
+
+            <a href="{{item.refDownloadUrl}}">{{item.refDownloadUrl}}</a> <br>
+
+            <button on-tap="addToDb" value="{{index}}">Add Image to List</button>
+
+            <button on-tap="deleteFile" value="{{index}}">Delete</button>
+          </template>
+
+          <template is="dom-if" if="[[!isEqual(item.state, 'success')]]">
+            <template is="dom-if" if="[[isEqual(item.state, 'running')]]">
+              <button on-tap="cancel" value="{{index}}">Cancel</button>
+              <button on-tap="pause" value="{{index}}">Pause</button>
+            </template>
+
+            <template is="dom-if" if="[[isEqual(item.state, 'paused')]]">
+              <button on-tap="resume" value="{{index}}">Resume</button>
+            </template>
+          </template>
+
+          <br>
+        </div>
+      </template>
+
+    <paper-toast id="toaster"></paper-toast>
     </div>
 
     <div class="card">
@@ -75,13 +167,6 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
          }
          </script>
 
-<firebase-document
-  data="{{newImage}}"
-  id="newImage"
-  app-name="firebaseApp"
-  ></firebase-document>
-
-
 
   <firebase-query
     id="imageQuery"
@@ -102,8 +187,54 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         selectedImage: {
           type: String,
           notify: true
-        }
+        },
+          uploadTasks: {
+            type: Array,
+            observer: '_uploadTasksChanged'
+          },
+          uploadedFiles: {
+            type: Array,
+          }
       },
+
+      catchError(e) {
+          this.$$('#toaster').show({
+            text: e.detail.message
+          });
+        },
+
+       cancel(e) {
+          this.$$('#task-' + e.target.value).cancel();
+        },
+        resume(e) {
+          this.$$('#task-' + e.target.value).resume();
+        },
+        pause(e) {
+          this.$$('#task-' + e.target.value).pause();
+        },
+        addToDb(e) {
+          this.$$('#ref-' + e.target.value).getDownloadURL();
+          this.$$('#doc-' + e.target.value).saveValue('/images');
+        },
+        deleteFile(e) {
+          this.$$('#ref-' + e.target.value).delete().then(function(d) {
+            console.log(d)
+          })
+        },
+        _uploadTasksChanged(uploadTasks) {
+          console.log(uploadTasks);
+        },
+        _uploadedFilesChanged(uploadedFiles) {
+          console.log(uploadedFiles);
+        },
+        isEqual(a, b) {
+          return a === b;
+        },
+        
+        upload() {
+          this.$$('#fs').upload(this.$$('#file-uploader').files);
+
+        },
 
       _toArray: function(obj) {
             if(obj) {
@@ -121,64 +252,64 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
               else {
                 return [];
               }
-            },
+            }
 
-      fileupload: function(event) {
-  event.preventDefault();
-  //check resource name exists, give warning and remove files if not
-  //create file upload task
-  var file = event.detail.file;
-  console.log(file)
-  var ssdResourcesApp=firebase.app("firebaseApp")
-  console.log(ssdResourcesApp)
-  filenumber = this._toArray(this.uploadedFiles).length;
-  console.log(filenumber)
-  var ref = firebase.storage(ssdResourcesApp).ref().child("/images/"+file.name)
-  console.log(ref)
-  var uploadTask=ref.put(file);
-  uploadTask.on('state_changed',function(snapshot){
-      // var progressBars = document.querySelectorAll('paper-progress');
-      // console.log(progressBars);
-      // var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-      var vaadinUploads=this.$.uploader
-      console.log(vaadinUploads)
-      var uploadsMeta=vaadinUploads.get('files');
-      var index=_getCurrentIndex(file,uploadsMeta)
-      console.log(index)
-      // progressBars[index].set('value',progress)
-  }.bind(this), function(error) {
-    console.log(error)
-    // Handle unsuccessful uploads
-  }, function() {
-    console.log('uploadTask',uploadTask)
-    var downloadURL = uploadTask.snapshot.downloadURL;
-    // //set progress bar to complete
-    var vaadinUploads=this.$.uploader;
-    var uploadsMeta=vaadinUploads.get('files');
-    console.log(uploadsMeta);
-    console.log(vaadinUploads);
-    // var vaadinFiles=this.$.uploader.files
-    var index=_getCurrentIndex(file,uploadsMeta)
-    console.log(index);
-    // just pushing the new file item to the uploadedFiles array loses a bunch of the file metadata (I guess the perils of forcing a file object into a database array?)  So - terrible hack time:
-    this.newImage = {};
-    this.newImage.name = vaadinUploads.files[index].name;
-    this.newImage.lastModified = Date.now();
-    this.newImage.size = vaadinUploads.files[index].size;
-    this.newImage.url = downloadURL;
-    console.log(this.newImage);
-    path="/images"
+// fileupload: function(event) {
+//   event.preventDefault();
+//   //check resource name exists, give warning and remove files if not
+//   //create file upload task
+//   var file = event.detail.file;
+//   console.log(file)
+//   var ssdResourcesApp=firebase.app("firebaseApp")
+//   console.log(ssdResourcesApp)
+//   filenumber = this._toArray(this.uploadedFiles).length;
+//   console.log(filenumber)
+//   var ref = firebase.storage(ssdResourcesApp).ref().child("/images/"+file.name)
+//   console.log(ref)
+//   var uploadTask=ref.put(file);
+//   uploadTask.on('state_changed',function(snapshot){
+//       // var progressBars = document.querySelectorAll('paper-progress');
+//       // console.log(progressBars);
+//       // var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+//       var vaadinUploads=this.$.uploader
+//       console.log(vaadinUploads)
+//       var uploadsMeta=vaadinUploads.get('files');
+//       var index=_getCurrentIndex(file,uploadsMeta)
+//       console.log(index)
+//       // progressBars[index].set('value',progress)
+//   }.bind(this), function(error) {
+//     console.log(error)
+//     // Handle unsuccessful uploads
+//   }, function() {
+//     console.log('uploadTask',uploadTask)
+//     var downloadURL = uploadTask.snapshot.downloadURL;
+//     // //set progress bar to complete
+//     var vaadinUploads=this.$.uploader;
+//     var uploadsMeta=vaadinUploads.get('files');
+//     console.log(uploadsMeta);
+//     console.log(vaadinUploads);
+//     // var vaadinFiles=this.$.uploader.files
+//     var index=_getCurrentIndex(file,uploadsMeta)
+//     console.log(index);
+//     // just pushing the new file item to the uploadedFiles array loses a bunch of the file metadata (I guess the perils of forcing a file object into a database array?)  So - terrible hack time:
+//     this.newImage = {};
+//     this.newImage.name = vaadinUploads.files[index].name;
+//     this.newImage.lastModified = Date.now();
+//     this.newImage.size = vaadinUploads.files[index].size;
+//     this.newImage.url = downloadURL;
+//     console.log(this.newImage);
+//     path="/images"
 
-    this.$.newImage.save(path).then(function() {
-      this.$.newImage.reset();
-      this.newImage = {};
-      vaadinUploads.files = [];
-    }.bind(this));
-  }.bind(this));
-  },
+//     this.$.newImage.save(path).then(function() {
+//       this.$.newImage.reset();
+//       this.newImage = {};
+//       vaadinUploads.files = [];
+//     }.bind(this));
+//   }.bind(this));
+//   },
 
 
-    });
+     });
 
   </script>
 </dom-module>
